@@ -57,23 +57,35 @@ def train_model(input_to_softmax,
     num_valid_samples = len(audio_gen.valid_audio_paths) 
     validation_steps = num_valid_samples//minibatch_size
     
+    
     # add CTC loss to the NN specified in input_to_softmax
     model = add_ctc_loss(input_to_softmax)
-
-    # CTC loss is implemented elsewhere, so use a dummy lambda function for the loss
-    model.compile(loss={'ctc': lambda y_true, y_pred: y_pred}, optimizer=optimizer)
 
     # make results/ directory, if necessary
     if not os.path.exists('results'):
         os.makedirs('results')
 
+    checkpoint_file_path = 'results/'+save_model_path   
+    
+    #utilize the checkpointer to resume training.
+    f_path = os.path.isfile(checkpoint_file_path)
+    if f_path:
+        print('Load from previous weights and resume training.')
+        model.load_weights(checkpoint_file_path)
+    else:
+        print('No previous checkpoint found. Start from beginning.')
+        
+    # CTC loss is implemented elsewhere, so use a dummy lambda function for the loss    
+    model.compile(loss={'ctc': lambda y_true, y_pred: y_pred}, optimizer=optimizer)
+        
     # add checkpointer
-    checkpointer = ModelCheckpoint(filepath='results/'+save_model_path, 
-                                   verbose=0,monitor='val_loss')
+    checkpointer = ModelCheckpoint(filepath=checkpoint_file_path, 
+                                   verbose=0)
     
     #PBC: Earlystopping
-    callback = [EarlyStopping(monitor='val_loss',patience=2),checkpointer, TerminateOnNaN()]
-
+    callback = [EarlyStopping(monitor='val_loss',patience=3,mode='auto'),checkpointer]
+    
+    
     # train the model
     hist = model.fit_generator(generator=audio_gen.next_train(), steps_per_epoch=steps_per_epoch,
         epochs=epochs, validation_data=audio_gen.next_valid(), validation_steps=validation_steps,
